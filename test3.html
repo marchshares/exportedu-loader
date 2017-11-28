@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Loader</title>
+    <link rel="stylesheet" href="bootstrap/css/bootstrap.css" type="text/css"/>
+
+    <!--<script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>-->
+    <!--<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.3/umd/popper.min.js" integrity="sha384-vFJXuSJphROIrBnz7yo7oB41mKfc8JzQZiCq4NCceLEaO4IHwicKwpJf9c9IpFgh" crossorigin="anonymous"></script>-->
+    <!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/js/bootstrap.min.js" integrity="sha384-alpBpkh1PFOepccYVYDB4do5UnbKysX5WZXm3XxPqe5iKTfUKjNkCk9SaVuEZflJ" crossorigin="anonymous"></script>-->
+
+    <script type="text/javascript" src="jquery/jquery-3.2.1.js"></script>
+    <script type="text/javascript" src="popper/popper.js"></script>
+    <script type="text/javascript" src="bootstrap/js/bootstrap.js"></script>
+
+    <link rel="stylesheet" href="bootstrap-daterangepicker-master/daterangepicker.css">
+    <script src="bootstrap-daterangepicker-master/moment.js"></script>
+    <script src="bootstrap-daterangepicker-master/daterangepicker.js"></script>
+    <script src="hollax/bootstrap-progressbar-manager.js"></script>
+    <script src="collections/collections.min.js"></script>
+
+    <style type="text/css">
+        .container {
+            margin-top: 20px;
+            padding-top: 10px;
+            max-width: 500px;
+            border: solid #000;
+            border-width: 1px;
+        }
+        textarea {
+            width: 100%;
+            height: 400px;
+        }
+    </style>
+</head>
+<body>
+<div class="container" >
+    <!-- Content here -->
+
+    <form>
+        <div class="form-group">
+
+            <ul class="nav nav-tabs" id="myTab" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="period-tab" data-toggle="tab" href="#period" role="tab" aria-controls="period" aria-selected="true">Период</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="eventId-tab" data-toggle="tab" href="#eventId" role="tab" aria-controls="eventId" aria-selected="true">EventId</a>
+                </li>
+            </ul>
+            <br>
+
+            <div class="tab-content" id="myTabContent">
+
+                <div class="tab-pane fade active show" id="period" role="tabpanel" aria-labelledby="period-tab">
+                    <div class="input-group">
+                        <span class="input-group-addon">Период</span>
+                        <!--<label for="dates-input">Период</label>-->
+                        <input id="dates-input" type="text" class="form-control" name="daterange"/>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="eventId" role="tabpanel" aria-labelledby="eventId-tab">
+                    <div class="input-group">
+                        <span class="input-group-addon">Id</span>
+                        <input id="eventId-input" type="number" class="form-control" min="1" data-bind="value:replyNumber"/>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <button id="get-data-btn" type="button" class="btn btn-primary" onclick="doFunction();">Получить данные</button>
+        </div>
+        <div class="form-group">
+            <textarea id="status" readonly></textarea>
+        </div>
+        <div class="form-group">
+            <div class="progress">
+                <div class="progress-bar progress-bar-striped bg-success" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+        </div>
+
+    </form>
+
+</div>
+<script>
+    var $log = $('#status');
+    var $progress_bar = $('.progress-bar');
+    var $get_data_btn = $('#get-data-btn');
+    $get_data_btn.on("eventsLoaded", function (e) {
+        receiveParticipants();
+    });
+
+    var eventsMap = new SortedMap();
+
+    configDateRangePicker();
+    var accessToken = getAccessToken();
+
+    var drp = $('#dates-input').data('daterangepicker');
+
+    function doFunction() {
+        $log.val('');
+        eventsMap.clear();
+
+        var activeNav = $(".nav-link.active").attr("id");
+
+        if (activeNav === "period-tab") {
+            receiveEvents();
+        } else if (activeNav === "eventId-tab") {
+            var eventId = parseInt($('#eventId-input').val());
+
+            if (eventId !== null && eventId !== "") {
+                receiveEvents(eventId);
+            }
+        }
+    }
+
+    function receiveParticipants() {
+        var participants;
+
+        progressValue = 0;
+        $progress_bar
+            .css('width', 0+'%')
+            .attr('aria-valuenow', 0)
+            .attr('aria-valuemin', 0)
+            .attr('aria-valuemax', eventsMap.length);
+
+        eventsMap.forEach(function (event, eventId) {
+
+            var request = new XMLHttpRequest();
+            var url = "https://api.exportedu.ru/api/events/" + eventId + "/statistic";
+
+            request.open("GET", url, true);
+            request.setRequestHeader("Content-type", "application/json");
+            request.setRequestHeader("Authorization", "Bearer " + accessToken);
+            request.eventId = eventId;
+
+            request.onreadystatechange = function() {
+                if (this.readyState === 4 && this.status === 200) {
+                    updateProgressBar();
+
+                    participants = JSON.parse(this.responseText).participants;
+                    logger(this.eventId + ": " + participants.length);
+                }
+            };
+
+            request.send();
+        });
+    }
+
+    var progressValue;
+    function updateProgressBar() {
+        progressValue++;
+
+        $progress_bar
+            .css('width', 100.0 * progressValue / $progress_bar.attr('aria-valuemax') + '%')
+            .attr('aria-valuenow', progressValue);
+    }
+
+    function logger(msg) {
+        console.log(msg);
+        $log.val($log.val() + msg + "\n");
+        $log.scrollTop($log[0].scrollHeight);
+    }
+
+    function receiveEvents(customEventId) {
+        var eventsRequest = new XMLHttpRequest();
+        var url = "https://api.exportedu.ru/api/events?filters%5Btype%5D=past&limit=500&offset=0&order_by=date&order_direction=asc";
+
+        eventsRequest.open("GET", url, true);
+        eventsRequest.setRequestHeader("Content-type", "application/json");
+        eventsRequest.onreadystatechange = function () {
+
+            if (eventsRequest.readyState === 4 && eventsRequest.status === 200) {
+                var allEvents = JSON.parse(eventsRequest.responseText).events;
+
+                for (var i in allEvents) {
+                    var event = allEvents[i];
+
+                    if (customEventId !== undefined) {
+                        if (customEventId === event.id) {
+                            processEvent(event);
+                            break;
+                        }
+                    } else {
+
+                        var startEventDate = new Date(event.date.start.replace(new RegExp("T.*"), ""));
+
+                        if (drp.startDate.isSameOrBefore(startEventDate) &&
+                            drp.endDate.isSameOrAfter(startEventDate)) {
+
+                            processEvent(event);
+                        }
+                    }
+                }
+
+                logger("Events count: " + eventsMap.length);
+
+                $get_data_btn.trigger("eventsLoaded");
+            }
+        };
+        eventsRequest.send();
+    }
+
+    function processEvent(event) {
+        var eventParams = new Map();
+
+        eventParams.set("eventId", event.id);
+
+        eventsMap.set(event.id, eventParams);
+    }
+
+    function getAccessToken() {
+        var accessToken;
+
+        var body = "{\"client_id\":\"10_2q3gla9h61es8kg80gokwskccksk0g44g8wg4gws4wgo84oc0w\",\"grant_type\":\"password\",\"username\":\"romanchuk@exportcenter.ru\",\"password\":\"Copybook6277\"}";
+
+        var tokenRequest = new XMLHttpRequest();
+        var url = "https://api.exportedu.ru/oauth/v2/token";
+
+        tokenRequest.open("POST", url, false);
+        tokenRequest.setRequestHeader("Content-type", "application/json");
+        tokenRequest.onreadystatechange = function () {
+
+            if (tokenRequest.readyState === 4 && tokenRequest.status === 200) {
+                logger("Token received\n");
+                tokenJson = JSON.parse(tokenRequest.responseText);
+
+                accessToken = tokenJson.access_token;
+            }
+        };
+        tokenRequest.send(body);
+
+        return accessToken;
+    }
+
+    function configDateRangePicker() {
+        var start = moment().startOf('month');
+        var end = moment();
+
+        $('#dates-input').daterangepicker({
+            startDate: start,
+            endDate: end,
+            ranges: {
+                'Сегодня': [moment(), moment()],
+                'Вчера': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+                'Последние 7 дней': [moment().subtract(6, 'days'), moment()],
+                'Последние 30 дней': [moment().subtract(29, 'days'), moment()],
+                'С начала месяца': [moment().startOf('month'), moment()],
+                'Последний месяц': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+            },
+            locale: {
+                format: 'DD/MMMM/YYYY',
+                customRangeLabel: "Другой",
+                monthNames: [
+                    "Январь",
+                    "Февраль",
+                    "Март",
+                    "Апрель",
+                    "Май",
+                    "Июнь",
+                    "Июль",
+                    "Август",
+                    "Сентябрь",
+                    "Октябрь",
+                    "Ноябрь",
+                    "Декабрь"
+                ],
+                daysOfWeek: [
+                    "Вс",
+                    "Пн",
+                    "Вт",
+                    "Ср",
+                    "Чт",
+                    "Пт",
+                    "Сб"
+                ],
+                firstDay: 1
+            }
+        });
+    }
+
+</script>
+</body>
+</html>
